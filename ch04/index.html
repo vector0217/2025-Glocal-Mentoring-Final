@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Mini Heatwave API Client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;        /* slate-900 */
+      --card: #111827;      /* gray-900 */
+      --muted: #94a3b8;     /* slate-400 */
+      --text: #e5e7eb;      /* gray-200 */
+      --accent: #60a5fa;    /* blue-400 */
+      --accent-2: #f59e0b;  /* amber-500 */
+      --ok: #22c55e;        /* green-500 */
+      --danger: #ef4444;    /* red-500 */
+      --border: #1f2937;    /* gray-800 */
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px; background: linear-gradient(180deg, #0b1226, #0f172a);
+      color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto;
+    }
+    h1 { font-size: 24px; margin: 0 0 12px; font-weight: 800; letter-spacing: 0.2px; }
+    p  { margin: 0 0 18px; color: var(--muted); }
+    .wrap {
+      max-width: 1100px; margin: 0 auto; display: grid; gap: 16px;
+      grid-template-columns: 1.1fr 2fr;
+    }
+    .card {
+      background: rgba(17, 24, 39, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 16px; backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+    input, select {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+      background: #0b1220; color: var(--text); outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(96,165,250,.25); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, var(--accent), #3b82f6);
+      color: #0b1220; border: none; padding: 10px 14px; border-radius: 12px; cursor: pointer;
+      font-weight: 700;
+    }
+    .btn.secondary {
+      background: linear-gradient(135deg, #c084fc, #a855f7); color: #0b1220;
+    }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+    .kpi { background: #0b1220; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+    .kpi .label { font-size: 12px; color: var(--muted); }
+    .kpi .value { font-size: 20px; font-weight: 800; margin-top: 4px; }
+    .flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .badge { padding: 4px 8px; font-size: 12px; border-radius: 999px; background: #0b1220; border: 1px solid var(--border); color: var(--muted); }
+    .list { margin-top: 12px; display: grid; gap: 8px; max-height: 280px; overflow: auto; }
+    .item { padding: 10px; border: 1px dashed var(--border); border-radius: 10px; }
+    .muted { color: var(--muted); }
+    .error { color: var(--danger); font-weight: 700; }
+    .footer { margin-top: 18px; font-size: 12px; color: var(--muted); }
+    @media (max-width: 960px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>🌞 Mini Heatwave API Client</h1>
+  <p>연도/임계값을 선택해 <code>/summary</code>, <code>/top-heat-days</code>를 호출하고 결과를 카드/차트로 확인해요.</p>
+
+  <div class="wrap">
+    <!-- 좌측: 폼/컨트롤 -->
+    <div class="card">
+      <h2 style="margin-top:0;">🔧 요청 설정</h2>
+      <div class="row">
+        <div>
+          <label>API Base URL</label>
+          <input id="apiBase" type="text" value="" placeholder="(비워두면 현재 호스트 기준)" />
+        </div>
+        <div>
+          <label>연도 (선택)</label>
+          <select id="yearSelect">
+            <option value="">전체</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <div>
+          <label>폭염 기준(°C) — /summary</label>
+          <input id="threshold" type="number" step="0.1" value="33.0" />
+        </div>
+        <div>
+          <label>상위 일 수 K — /top-heat-days</label>
+          <input id="topk" type="number" min="1" max="31" value="5" />
+        </div>
+      </div>
+
+      <div class="flex" style="margin-top:14px;">
+        <button class="btn" id="btnHealth">/health 불러오기</button>
+        <button class="btn secondary" id="btnSummary">/summary 실행</button>
+        <button class="btn" id="btnTop">/top-heat-days 실행</button>
+        <span id="status" class="badge">대기</span>
+      </div>
+
+      <div id="err" class="error" style="margin-top:10px;"></div>
+
+      <div class="footer">
+        CORS 오류가 나면 FastAPI에 <code>CORSMiddleware</code> 추가가 필요할 수 있어요.
+      </div>
+    </div>
+
+    <!-- 우측: 출력/시각화 -->
+    <div class="card">
+      <h2 style="margin-top:0;">📊 결과</h2>
+
+      <!-- Summary -->
+      <div id="summaryBox" class="kpis" style="display:none;">
+        <div class="kpi">
+          <div class="label">연도</div>
+          <div class="value" id="kpiYear">-</div>
+        </div>
+        <div class="kpi">
+          <div class="label">관측일수</div>
+          <div class="value" id="kpiDays">-</div>
+        </div>
+        <div class="kpi">
+          <div class="label">폭염일수(≥ T)</div>
+          <div class="value" id="kpiHeatDays">-</div>
+        </div>
+        <div class="kpi">
+          <div class="label">평균 최고기온</div>
+          <div class="value" id="kpiMean">-</div>
+        </div>
+        <div class="kpi">
+          <div class="label">최대 최고기온</div>
+          <div class="value" id="kpiMax">-</div>
+        </div>
+        <div class="kpi">
+          <div class="label">최소 최고기온</div>
+          <div class="value" id="kpiMin">-</div>
+        </div>
+      </div>
+
+      <!-- Top-K list -->
+      <div id="topList" style="display:none; margin-top:14px;">
+        <div class="flex">
+          <span class="badge">Top Heat Days</span>
+          <span class="muted" id="topMeta"></span>
+        </div>
+        <div class="list" id="topItems"></div>
+      </div>
+
+      <!-- Chart -->
+      <div style="margin-top:16px;">
+        <canvas id="chart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Config =====
+    const API_BASE_EL = document.getElementById('apiBase');
+    const YEAR_SEL    = document.getElementById('yearSelect');
+    const THRESH_EL   = document.getElementById('threshold');
+    const TOPK_EL     = document.getElementById('topk');
+    const STATUS_EL   = document.getElementById('status');
+    const ERR_EL      = document.getElementById('err');
+
+    const KPI_BOX     = document.getElementById('summaryBox');
+    const KPI_YEAR    = document.getElementById('kpiYear');
+    const KPI_DAYS    = document.getElementById('kpiDays');
+    const KPI_HEAT    = document.getElementById('kpiHeatDays');
+    const KPI_MEAN    = document.getElementById('kpiMean');
+    const KPI_MAX     = document.getElementById('kpiMax');
+    const KPI_MIN     = document.getElementById('kpiMin');
+
+    const TOP_BOX     = document.getElementById('topList');
+    const TOP_META    = document.getElementById('topMeta');
+    const TOP_ITEMS   = document.getElementById('topItems');
+
+    const BTN_HEALTH  = document.getElementById('btnHealth');
+    const BTN_SUMMARY = document.getElementById('btnSummary');
+    const BTN_TOP     = document.getElementById('btnTop');
+
+    // Default API base: same origin
+    const defaultBase = "http://localhost:8000";
+    API_BASE_EL.value = defaultBase;  // input 박스에도 기본 표시
+
+    function apiBase() {
+      const v = API_BASE_EL.value.trim();
+      return v || defaultBase;
+    }
+
+    function q(params) {
+      const usp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') usp.set(k, v);
+      });
+      const s = usp.toString();
+      return s ? `?${s}` : '';
+    }
+
+    function setBusy(busy, label = '요청 중') {
+      STATUS_EL.textContent = busy ? label : '대기';
+      BTN_HEALTH.disabled = BTN_SUMMARY.disabled = BTN_TOP.disabled = busy;
+      ERR_EL.textContent = '';
+    }
+
+    function handleError(err) {
+      console.error(err);
+      ERR_EL.textContent = (err && err.message) ? err.message : '요청 실패';
+      setBusy(false);
+    }
+
+    // ===== Chart.js =====
+    let chart;
+    function ensureChart() {
+      const ctx = document.getElementById('chart').getContext('2d');
+      if (chart) return chart;
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: '최고기온(°C)', data: [] }] },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: true },
+            tooltip: { mode: 'index', intersect: false }
+          },
+          scales: {
+            x: { ticks: { color: '#cbd5e1' } },
+            y: { ticks: { color: '#cbd5e1' }, beginAtZero: false }
+          }
+        }
+      });
+      return chart;
+    }
+
+    function renderTopChart(rows) {
+      const c = ensureChart();
+      const labels = rows.map(r => {
+        // r["일시"]가 ISO 문자열일 수 있음
+        const d = new Date(r["일시"]);
+        return isNaN(d.getTime()) ? r["일시"] : d.toISOString().substring(0, 10);
+      });
+      const temps = rows.map(r => r["최고기온(°C)"]);
+      c.data.labels = labels;
+      c.data.datasets[0].data = temps;
+      c.update();
+    }
+
+    function renderSummaryCard(s) {
+      KPI_YEAR.textContent = s.year ?? '전체';
+      KPI_DAYS.textContent = s.n_days.toLocaleString();
+      KPI_HEAT.textContent = `${s.heatwave_days.toLocaleString()} (≥ ${s.threshold_C}°C)`;
+      KPI_MEAN.textContent = `${s.tmax_mean.toFixed(2)}°C`;
+      KPI_MAX.textContent  = `${s.tmax_max.toFixed(2)}°C`;
+      KPI_MIN.textContent  = `${s.tmax_min.toFixed(2)}°C`;
+      KPI_BOX.style.display = 'grid';
+    }
+
+    function renderTopList(year, k, rows) {
+      TOP_BOX.style.display = 'block';
+      TOP_META.textContent = `연도: ${year || '전체'} · K=${k}`;
+      TOP_ITEMS.innerHTML = '';
+      rows.forEach((r, i) => {
+        const when = (() => {
+          const d = new Date(r["일시"]);
+          return isNaN(d.getTime()) ? r["일시"] : d.toLocaleDateString();
+        })();
+        const el = document.createElement('div');
+        el.className = 'item';
+        el.innerHTML = `
+          <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div><strong>${i+1}위</strong> · ${when}</div>
+            <div><span class="badge">최고기온 ${r["최고기온(°C)"]}°C</span></div>
+          </div>
+          <div class="muted" style="margin-top:6px;">연도: ${r["연도"]}</div>
+        `;
+        TOP_ITEMS.appendChild(el);
+      });
+    }
+
+    // ===== API Calls =====
+    async function callHealth() {
+      setBusy(true, '/health 호출');
+      const url = `${apiBase()}/health`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`/health 실패 (${res.status})`);
+      const data = await res.json();
+      setBusy(false, '완료');
+      // 연도 셀렉트 채우기
+      YEAR_SEL.innerHTML = '<option value="">전체</option>';
+      (data.years || []).forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y; opt.textContent = y;
+        YEAR_SEL.appendChild(opt);
+      });
+      // 상태 뱃지
+      STATUS_EL.textContent = `OK: ${data.rows} rows, years=${(data.years||[]).join(', ')}`;
+    }
+
+    async function callSummary() {
+      setBusy(true, '/summary 호출');
+      const year = YEAR_SEL.value || undefined;
+      const threshold = THRESH_EL.value;
+      const url = `${apiBase()}/summary${q({ year, threshold })}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(`/summary 실패 (${res.status}) ${msg}`);
+      }
+      const s = await res.json();
+      renderSummaryCard(s);
+      setBusy(false, '완료');
+    }
+
+    async function callTop() {
+      setBusy(true, '/top-heat-days 호출');
+      const year = YEAR_SEL.value || undefined;
+      const k = TOPK_EL.value || 5;
+      const url = `${apiBase()}/top-heat-days${q({ year, k })}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(`/top-heat-days 실패 (${res.status}) ${msg}`);
+      }
+      const t = await res.json();
+      const rows = t.data || [];
+      renderTopList(t.year, t.k, rows);
+      renderTopChart(rows);
+      setBusy(false, '완료');
+    }
+
+    // ===== Events =====
+    BTN_HEALTH.addEventListener('click', () => callHealth().catch(handleError));
+    BTN_SUMMARY.addEventListener('click', () => callSummary().catch(handleError));
+    BTN_TOP.addEventListener('click', () => callTop().catch(handleError));
+
+    // 초기 동작: health 호출해서 연도 목록 채우기 시도
+    callHealth().catch(err => {
+      // 초기 실패는 무시하고 메시지만 표시 (예: 서버 미실행)
+      ERR_EL.textContent = '초기 /health 호출 실패: ' + (err.message || err);
+    });
+  </script>
+</body>
+</html>

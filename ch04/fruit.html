@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>FastAPI CRUD 실습 클라이언트</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root{
+      --bg:#f8fafc; --card:#fff; --border:#e2e8f0; --ink:#0f172a; --muted:#475569;
+      --btn:#3b82f6; --btn-hover:#2563eb;
+    }
+    *{box-sizing:border-box}
+    body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); margin:20px; color:var(--ink)}
+    h1{font-size:22px; margin:0 0 14px}
+    h2{font-size:18px; margin:0 0 10px}
+    .card{
+      background:var(--card); border:1px solid var(--border); border-radius:12px;
+      padding:16px; box-shadow:0 2px 4px rgba(0,0,0,.05);
+    }
+    .stack{display:grid; gap:16px; max-width:1100px; margin:0 auto;}
+    .grid-2x2{
+      display:grid; gap:16px; grid-template-columns:repeat(2, 1fr);
+    }
+    label{display:block; margin-top:8px; font-size:14px; color:var(--muted)}
+    input{
+      width:100%; padding:8px 10px; margin-top:4px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;
+    }
+    button{
+      margin-top:12px; padding:9px 14px; background:var(--btn); border:none; color:#fff; border-radius:8px; cursor:pointer; font-weight:600;
+    }
+    button:hover{background:var(--btn-hover)}
+    pre{
+      background:#0f172a; color:#f1f5f9; padding:12px; border-radius:10px; font-size:13px; line-height:1.45;
+      max-height:360px; overflow:auto; border:1px solid #0b1220;
+    }
+    .row{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+    @media (max-width: 900px){
+      .grid-2x2{grid-template-columns:1fr;}
+      .row{grid-template-columns:1fr;}
+    }
+  </style>
+</head>
+<body>
+  <div class="stack">
+    <h1>🍎 FastAPI CRUD 실습 클라이언트</h1>
+    <div class="card">
+      <h2>응답 결과</h2>
+      <pre id="output">여기에 결과가 표시됩니다.</pre>
+    </div>
+    <!-- 1) 풀폭: GET 전체 아이템 -->
+    <div class="card">
+      <h2>GET 전체 아이템</h2>
+      <button type="button" onclick="getItems()">/items</button>
+    </div>
+
+    <!-- 2) 2×2 그리드: 나머지 4개 카드 -->
+    <div class="grid-2x2">
+      <div class="card">
+        <h2>GET 특정 아이템</h2>
+        <label for="getId">아이템 ID</label>
+        <input id="getId" type="number" value="1">
+        <button type="button" onclick="getItem()">/items/{id}</button>
+      </div>
+
+      <div class="card">
+        <h2>POST 새 아이템 추가</h2>
+        <div class="row">
+          <div>
+            <label for="postId">ID</label>
+            <input id="postId" type="number" placeholder="예: 3">
+          </div>
+          <div>
+            <label for="postPrice">가격</label>
+            <input id="postPrice" type="number" placeholder="예: 2500">
+          </div>
+        </div>
+        <label for="postName">이름</label>
+        <input id="postName" type="text" placeholder="예: apple">
+        <button type="button" onclick="postItem()">POST /items/{id}</button>
+      </div>
+
+      <div class="card">
+        <h2>PUT 아이템 수정</h2>
+        <div class="row">
+          <div>
+            <label for="putId">ID</label>
+            <input id="putId" type="number" placeholder="수정할 ID">
+          </div>
+          <div>
+            <label for="putPrice">가격</label>
+            <input id="putPrice" type="number" placeholder="새 가격">
+          </div>
+        </div>
+        <label for="putName">이름</label>
+        <input id="putName" type="text" placeholder="새 이름">
+        <button type="button" onclick="putItem()">PUT /items/{id}</button>
+      </div>
+
+      <div class="card">
+        <h2>DELETE 아이템 삭제</h2>
+        <label for="delId">ID</label>
+        <input id="delId" type="number" placeholder="삭제할 ID">
+        <button type="button" onclick="deleteItem()">DELETE /items/{id}</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = "http://localhost:8000";
+
+function show(res) {
+  const out = document.getElementById("output");
+  out.textContent = (typeof res === 'string') ? res : JSON.stringify(res, null, 2);
+}
+
+async function safeFetch(url, opts) {
+  try {
+    const res = await fetch(url, opts);
+    const txt = await res.text();
+    let data;
+    try { data = JSON.parse(txt); } catch { data = txt; }
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} | ${txt}`);
+    return data;
+  } catch (err) {
+    show(`❌ 요청 실패: ${err.message || err}`);
+    throw err;
+  }
+}
+
+async function getItems() {
+  const data = await safeFetch(`${API_BASE}/items`);
+  show(data);
+}
+
+async function getItem() {
+  const id = document.getElementById("getId").value;
+  const data = await safeFetch(`${API_BASE}/items/${id}`);
+  show(data);
+}
+
+async function postItem() {
+  const id = document.getElementById("postId").value;
+  const name = document.getElementById("postName").value;
+  const price = Number(document.getElementById("postPrice").value);
+  const data = await safeFetch(`${API_BASE}/items/${id}`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name, price})
+  });
+  show(data);
+}
+
+async function putItem() {
+  const id = document.getElementById("putId").value;
+  const name = document.getElementById("putName").value;
+  const price = Number(document.getElementById("putPrice").value);
+  const data = await safeFetch(`${API_BASE}/items/${id}`, {
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name, price})
+  });
+  show(data);
+}
+
+async function deleteItem() {
+  const id = document.getElementById("delId").value;
+  const data = await safeFetch(`${API_BASE}/items/${id}`, {method:"DELETE"});
+  show(data);
+}
+</script>
+</body>
+</html>
